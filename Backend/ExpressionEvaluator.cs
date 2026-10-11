@@ -1,5 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.Reflection.Metadata;
+﻿using System.Globalization;
 
 namespace Backend;
 
@@ -9,51 +8,116 @@ public static class ExpressionEvaluator
 
     private static string ToPostfix(string infix)
     {
-        var posfix = string.Empty;
+        var postfix = new List<string>();
         var stack = new Stack<char>();
-        foreach (var item in infix)
+        int i = 0;
+
+        while (i < infix.Length)
         {
-            if (IsOperator(item))
+            char item = infix[i];
+
+            if (char.IsWhiteSpace(item))
             {
-                if (item == ')')
+                i++;
+                continue;
+            }
+
+            if (char.IsDigit(item) || item == '.')
+            {
+                int start = i;
+                bool hasDecimalPoint = false;
+                bool hasDigit = false;
+
+                while (i < infix.Length &&
+                       (char.IsDigit(infix[i]) || infix[i] == '.'))
                 {
-                    var ope = stack.Pop();
-                    while(ope != '(')
+                    if (infix[i] == '.')
                     {
-                        posfix += ope;
-                        ope = stack.Pop();
-                    }
-                }
-                else
-                {
-                    if (stack.Count == 0)
-                    {
-                        stack.Push(item);
+                        if (hasDecimalPoint)
+                        {
+                            throw new FormatException(
+                                "Número decimal inválido.");
+                        }
+
+                        hasDecimalPoint = true;
                     }
                     else
                     {
-                        if (PriorityInfix(item) > PriorityStack(stack.Peek()))
-                        {
-                            stack.Push(item);
-                        }
-                        else
-                        {
-                            posfix += stack.Pop();
-                            stack.Push(item);
-                        }
+                        hasDigit = true;
                     }
+
+                    i++;
                 }
+
+                string number = infix.Substring(start, i - start);
+
+                if (!hasDigit ||
+                    !double.TryParse(
+                        number,
+                        NumberStyles.AllowDecimalPoint,
+                        CultureInfo.InvariantCulture,
+                        out _))
+                {
+                    throw new FormatException(
+                        $"Número inválido: {number}");
+                }
+
+                postfix.Add(number);
+                continue;
+            }
+
+            if (!IsOperator(item))
+            {
+                throw new FormatException(
+                    $"Operador o carácter inválido: {item}");
+            }
+
+            if (item == '(')
+            {
+                stack.Push(item);
+            }
+            else if (item == ')')
+            {
+                while (stack.Count > 0 && stack.Peek() != '(')
+                {
+                    postfix.Add(stack.Pop().ToString());
+                }
+
+                if (stack.Count == 0)
+                {
+                    throw new FormatException(
+                        "Paréntesis sin correspondencia.");
+                }
+
+                stack.Pop();
             }
             else
             {
-                posfix += item;
+                while (stack.Count > 0 &&
+                       stack.Peek() != '(' &&
+                       PriorityInfix(item) <= PriorityStack(stack.Peek()))
+                {
+                    postfix.Add(stack.Pop().ToString());
+                }
+
+                stack.Push(item);
             }
+
+            i++;
         }
-        do
+
+        while (stack.Count > 0)
         {
-            posfix += stack.Pop();
-        } while (stack.Count != 0);
-        return posfix;
+            if (stack.Peek() == '(')
+            {
+                throw new FormatException(
+                    "Hay un paréntesis sin cerrar.");
+            }
+
+            postfix.Add(stack.Pop().ToString());
+        }
+
+        return string.Join(" ", postfix);
     }
 
     private static int PriorityStack(char op) => op switch
@@ -83,19 +147,30 @@ public static class ExpressionEvaluator
     private static double EvalutePostfix(string postfix)
     {
         var stack = new Stack<double>();
-        foreach (var item in postfix)
+
+        var tokens = postfix.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var item in tokens)
         {
-            if (IsOperator(item))
+            if (item.Length == 1 && IsOperator(item[0]))
             {
                 var ope2 = stack.Pop();
                 var ope1 = stack.Pop();
-                stack.Push(Calculate(ope1, ope2, item));
+
+                stack.Push(Calculate(ope1, ope2, item[0]));
             }
             else
             {
-                stack.Push(char.GetNumericValue(item));
+                double number = double.Parse(
+                    item,
+                    CultureInfo.InvariantCulture);
+
+                stack.Push(number);
             }
         }
+
         return stack.Pop();
     }
 
@@ -109,3 +184,7 @@ public static class ExpressionEvaluator
         _ => throw new Exception("Invalid expression."),
     };
 }
+
+
+
+
